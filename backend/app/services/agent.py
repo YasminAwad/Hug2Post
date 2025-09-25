@@ -152,7 +152,38 @@ class ChatBotAgent:
         pass
 
     async def _general_chat_node(self, state: AgentState) -> AgentState:
-        pass
+        """Generate general chat response"""
+        logger.info(f"🤖 Entered General Response")
+        role_map = {
+            SystemMessage: "System",
+            HumanMessage: "Human",
+            AIMessage: "Assistant",
+        }
+
+        messages = state.get("messages", [])[:-1]  # exclude last message
+
+        history = "\n".join(
+            f"{role_map.get(type(msg), 'Unknown')}: {msg.content}"
+            for msg in messages
+        )
+        logger.info(f"History: {history}")
+        user_input = state.get("messages", [])[-1].content if state.get("messages") else ""
+        logger.info(f"User input: {user_input}")
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessage(content="""You are a helpful research paper assistant with memory of previous conversations.
+            
+            You can help users with its request.
+                    
+            How can I help you with your research today?"""),
+            HumanMessage(content=f"""Conversation Context:
+{history}
+
+Current User Input: {user_input}""")
+        ])
+        
+        response = await self.llm_service.generate_response(prompt.format_messages())
+        logger.info(f"🤖 General Response: {response}")
+        return {**state, "messages": [AIMessage(content=response.content)]}
 
 
 
