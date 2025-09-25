@@ -1,0 +1,17 @@
+bs4==0.0.2
+aiohttp==3.12.15
+pydantic-settings==2.10.1
+python-dotenv==1.1.1
+tiktoken==0.11.0
+langchain==0.3.27
+fastapi==0.117.1
+langchain-huggingface==0.3.1
+transformers==4.56.2
+uvicorn==0.37.0
+langchain-community==0.3.29
+torch==2.8.0
+accelerate==1.10.1
+asyncpg==0.30.0
+langgraph==0.6.7
+PyPDF2==3.0.1
+aiofiles==24.1.0
