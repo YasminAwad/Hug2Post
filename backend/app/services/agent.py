@@ -187,8 +187,19 @@ Current User Input: {user_input}""")
 
 
 
-    async def _clarify_request_node(self: AgentState) -> AgentState:
-        pass
+    async def _clarify_request_node(self, state: AgentState) -> AgentState:
+        """Handle unclear requests with context"""
+        user_input = state.get("messages", [])[-1].content if state.get("messages") else ""
+        
+        response_msg = f"""I'm not quite sure what you'd like me to do. Here are some things I can help with:
+
+- Summarize papers
+- Create LinkedIn posts
+- List papers by date
+
+Could you clarify what you'd like me to do?"""
+        
+        return {**state, "messages": [AIMessage(content=response_msg)]}
 
 
 
