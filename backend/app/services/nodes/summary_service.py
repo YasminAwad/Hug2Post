@@ -63,7 +63,7 @@ class SummaryService:
             response_msg += "\n\nSummaries created:"
             for i, summary in enumerate(summaries):
                 response_msg += f"\n{i+1}. {summary['title']}"
-                response_msg += f"\n   {summary['abstract'][:100]}...\n"
+                # response_msg += f"\n   {summary['abstract'][:100]}...\n"
         
         return processed_summary_ids, response_msg
     

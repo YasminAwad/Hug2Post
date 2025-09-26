@@ -2,6 +2,8 @@ from app.services.llm import LLMService
 from pathlib import Path
 from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import MemorySaver
+from typing import Dict, List, Any, Tuple
+import json
 
 from app.services.nodes.summary_service import SummaryService
 from app.services.nodes.linkedin_service import LinkedInService
@@ -57,6 +59,7 @@ class ChatBotAgent:
         graph = StateGraph(AgentState)
 
         graph.add_node("intent_classifier", self._intent_classifier_node)
+        graph.add_node("parameter_extractor", self._parameter_extractor_node)
         graph.add_node("summarize_papers", self._summarize_papers_node)
         graph.add_node("download_papers", self._download_papers_node)
         graph.add_node("create_linkedin_post_from_position", self._create_linkedin_post_by_position_node)
@@ -71,12 +74,24 @@ class ChatBotAgent:
             "intent_classifier",
             self._route_by_intent,
             {
+                "summarize": "parameter_extractor",
+                "linkedin by position": "parameter_extractor",
+                "linkedin by title": "parameter_extractor",
+                "list by date": "parameter_extractor",
+                "general": "general_chat",
+                "clarify": "clarify_request",
+                "error": "__end__"
+            }
+        )
+
+        graph.add_conditional_edges(
+            "parameter_extractor",
+            self._route_by_action,
+            {
                 "summarize": "download_papers",
                 "linkedin by position": "create_linkedin_post_from_position",
                 "linkedin by title": "create_linkedin_post_from_title",
                 "list by date": "list_papers_by_date",
-                "general": "general_chat",
-                "clarify": "clarify_request",
                 "error": "__end__"
             }
         )
@@ -110,6 +125,22 @@ class ChatBotAgent:
             return "clarify"
         else:
             return "error"
+
+    def _route_by_action(self, state: AgentState) -> str:
+        """Route based on the action after parameter extraction"""
+        intent = state.get("intent")
+        if state.get("error"):
+            return "error"
+        elif intent == "summarize_papers":
+            return "summarize"
+        elif intent == "create_linkedin_from_title":
+            return "linkedin by title"
+        elif intent == "create_linkedin_from_position":
+            return "linkedin by position"
+        elif intent == "list_papers_by_date":
+            return "list"
+        else:
+            return "error"
         
     async def _intent_classifier_node(self, state: AgentState) -> AgentState:
         """Classify user intent"""
@@ -123,7 +154,8 @@ class ChatBotAgent:
         """Download papers from HuggingFace Daily Papers"""
         logger.info("Entered _download_papers_node")
         try:
-            target_date = state.get("target_date")
+            target_date = state.get("parameters", {}).get("target_date")
+            # create folder if not exists
             response = await self.downloader_service.download_papers(target_date)
             logger.info(response)
             return {**state, "last_response": response}
@@ -134,16 +166,88 @@ class ChatBotAgent:
     async def _summarize_papers_node(self, state: AgentState) -> AgentState:
         """Summarize papers and save to database"""
         try:
-            target_date = state.get("target_date") or datetime.now().strftime("%Y-%m-%d")
+            target_date = state.get("parameters", {}).get("target_date") or datetime.now().strftime("%Y-%m-%d")
             processed_summary_ids, response_msg = await self.summary_service.summarize_papers_for_date(target_date)
 
             return {**state, "messages": [AIMessage(content=response_msg)], "current_papers": processed_summary_ids} # una lista degli ID dei papers correnti. Cosi' poi dall'id se l'utente ti chiede paper numero 1, tu scegli il primo della lista, cerchi nel db, ottieni la posizione del summary e crei il post.
         except Exception as e:
             return {**state, "error": f"Error summarizing papers: {str(e)}"}
+        
+    async def _parameter_extractor_node(self, state: AgentState) -> AgentState:
+
+        try:
+            parameters = await self._extract_parameters(state)
+            if not parameters.get("year"):
+                parameters["year"] = datetime.now().year
+            if not parameters.get("month") or int(parameters.get("month")) > 12 or int(parameters.get("month")) < 1 or not parameters.get("day") or int(parameters.get("day")) > 31 or int(parameters.get("day")) < 1:
+                return {**state, "error": "Invalid date format. Please specify a year, a month, and a day.", "messages": [AIMessage(content="The date you've sent is invalid. Please specify a year, a month, and a day.")]}
+            
+            target_date = f"{parameters['year']}-{parameters['month']}-{parameters['day']}" or datetime.now().strftime("%Y-%m-%d")
+            parameters["target_date"] = target_date
+            
+            return {**state, "parameters": parameters}
+        
+        except Exception as e:
+            return {**state, "error": f"Error extracting parameters: {str(e)}"} 
+        
+    async def _extract_parameters(self, state: AgentState) -> Dict[str, Any]:
+        logger.info("Entered _extract_parameters")
+        role_map = {
+            SystemMessage: "System",
+            HumanMessage: "Human",
+            AIMessage: "Assistant",
+        }
+
+        messages = state.get("messages", [])[:-1]  # exclude last message
+
+        history = "\n".join(
+            f"{role_map.get(type(msg), 'Unknown')}: {msg.content}"
+            for msg in messages
+        )
+
+        intent = state["intent"]
+        user_input = state.get("messages", [])[-1].content if state.get("messages") else ""
+
+        """Extract parameters from user input based on intent"""
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessage(content=f"""You are a parameter extractor. The user's intent is: {intent}
+            Extract relevant parameters and respond with a JSON object, do not add any additional text and don't write "json" in the response:
+
+            For "summarize_papers":
+            {{"year": "YYYY", "month": "MM", "day": "DD", "date_description": "what the user said about date"}}
+            
+            For "create_linkedin_from_title":
+            {{"paper_title": "string or null"}}
+                          
+            For "create_linkedin_from_position":
+            {{"paper_position": "int or null"}}
+            
+            For "list_papers_by_date":
+            {{"date": "YYYY-MM-DD or null", "date_description": "what the user said about date"}}
+
+            Respond with ONLY the JSON object, nothing else."""),
+            HumanMessage(content=f"""Conversation History:
+{history}
+
+Current User Input: {user_input}""")
+        ])
+        
+        response = await self.llm_service.generate_response(prompt.format_messages())
+
+        try:
+            logger.info("extract_parameters")
+            logger.info(response)
+            return json.loads(response.content.strip())
+        except json.JSONDecodeError:
+            return {}
     
     
-    async def _create_linkedin_post_by_position_node(self: AgentState) -> AgentState:
+    async def _create_linkedin_post_by_position_node(self, state: AgentState) -> AgentState:
+
+        
         pass
+        
+
 
     async def _create_linkedin_post_by_title_node(self: AgentState) -> AgentState:
         pass
@@ -160,7 +264,7 @@ class ChatBotAgent:
             AIMessage: "Assistant",
         }
 
-        messages = state.get("messages", [])[:-1]  # exclude last message
+        messages = state.get("messages", [])[:-1] 
 
         history = "\n".join(
             f"{role_map.get(type(msg), 'Unknown')}: {msg.content}"
@@ -184,8 +288,6 @@ Current User Input: {user_input}""")
         response = await self.llm_service.generate_response(prompt.format_messages())
         logger.info(f"🤖 General Response: {response}")
         return {**state, "messages": [AIMessage(content=response.content)]}
-
-
 
     async def _clarify_request_node(self, state: AgentState) -> AgentState:
         """Handle unclear requests with context"""
