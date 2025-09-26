@@ -3,7 +3,7 @@ import aiofiles
 from pathlib import Path
 from typing import Optional
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from app.services.llm import LLMService
 from app.services.database import DatabaseService, LinkedInPost
 from app.config.logging import logger
@@ -46,10 +46,17 @@ class LinkedInService:
             post=linkedin_post_content
         )
         
-        await self.database_service.save_linkedin_post(linkedin_post)
+        linkedin_post_id = await self.database_service.save_linkedin_post(linkedin_post)
         print(f"Saved LinkedIn post to database for paper: {paper.title}")
         
-        return linkedin_post_content
+        return linkedin_post_content, linkedin_post_id
+    
+    async def change_post(self, post: str, user_request: str, linkedin_post_id: int): 
+        """Generate a new LinkedIn post based on the existing one and user request"""
+        logger.info("Entered change_post")
+        new_post_content = await self._modify_linkedin_post(post, user_request)
+        await self.database_service.change_linkedin_post(linkedin_post_id, new_post_content)
+        return new_post_content
     
     async def _generate_linkedin_post(self, detailed_summary: str) -> str:
         """Generate LinkedIn post from detailed summary"""
@@ -67,5 +74,17 @@ class LinkedInService:
             HumanMessage(content=f"Detailed Summary:\n{detailed_summary[:1000]}...")
         ])
         
+        response = await self.llm_service.generate_response(prompt.format_messages())
+        return response.content
+    
+    async def _modify_linkedin_post(self, post: str, user_request: str): 
+        logger.info("Entered _modify_linkedin_post")
+        """Generate a new LinkedIn post based on the existing one and user request"""
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessage(content="""You are a helpful research paper assistant that make changes to existing LinkedIn posts. Change the generated post based on the user request. Return only the post without any other text."""),
+            AIMessage(content=post),
+            HumanMessage(content=user_request)
+        ])
+
         response = await self.llm_service.generate_response(prompt.format_messages())
         return response.content

@@ -7,8 +7,9 @@ from typing import Dict, List, Any, Optional, Annotated
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     last_response: Optional[str]
-    current_papers: Optional[List[int]]
     intent: Optional[str]
+    current_papers: Optional[List[int]]
+    current_post: Optional[int]
+    current_post_text: Optional[str]
     parameters: Optional[Dict[str, Any]]
-    # target_date: Optional[str]
     error: Optional[str]

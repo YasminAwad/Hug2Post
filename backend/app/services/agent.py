@@ -63,10 +63,10 @@ class ChatBotAgent:
         graph.add_node("summarize_papers", self._summarize_papers_node)
         graph.add_node("download_papers", self._download_papers_node)
         graph.add_node("create_linkedin_post_from_position", self._create_linkedin_post_by_position_node)
-        # graph.add_node("create_linkedin_post_from_title", self._create_linkedin_post_by_title_node)
         graph.add_node("list_papers_by_date", self._list_papers_by_date_node)
         graph.add_node("general_chat", self._general_chat_node)
         graph.add_node("clarify_request", self._clarify_request_node)
+        graph.add_node("modify_linkedin_post", self._modify_linkedin_post_node)
 
         graph.set_entry_point("intent_classifier")
 
@@ -76,8 +76,8 @@ class ChatBotAgent:
             {
                 "summarize": "parameter_extractor",
                 "linkedin by position": "parameter_extractor",
-                # "linkedin by title": "parameter_extractor",
                 "list by date": "parameter_extractor",
+                "modify linkedin": "modify_linkedin_post",
                 "general": "general_chat",
                 "clarify": "clarify_request",
                 "error": "__end__"
@@ -90,7 +90,6 @@ class ChatBotAgent:
             {
                 "summarize": "download_papers",
                 "linkedin by position": "create_linkedin_post_from_position",
-                # "linkedin by title": "create_linkedin_post_from_title",
                 "list by date": "list_papers_by_date",
                 "error": "__end__"
             }
@@ -98,8 +97,8 @@ class ChatBotAgent:
 
         graph.add_edge("download_papers", "summarize_papers")
         graph.add_edge("summarize_papers", "__end__")
-        # graph.add_edge("create_linkedin_post_from_title", "__end__")
         graph.add_edge("create_linkedin_post_from_position", "__end__")
+        graph.add_edge("modify_linkedin_post", "__end__")
         graph.add_edge("list_papers_by_date", "__end__")
         graph.add_edge("general_chat", "__end__")
         graph.add_edge("clarify_request", "__end__")
@@ -113,10 +112,10 @@ class ChatBotAgent:
             return "error"
         elif intent == "summarize_papers":
             return "summarize"
-        # elif intent == "create_linkedin_from_title":
-        #     return "linkedin by title"
         elif intent == "create_linkedin_from_position":
             return "linkedin by position"
+        elif intent == "modify_linkedin_post":
+            return "modify linkedin"
         elif intent == "list_papers_by_date":
             return "list by date"
         elif intent == "general_chat":
@@ -217,15 +216,12 @@ class ChatBotAgent:
 
             For "summarize_papers":
             {{"year": "YYYY", "month": "MM", "day": "DD", "date_description": "what the user said about date"}}
-            
-            For "create_linkedin_from_title":
-            {{"paper_title": "string or null"}}
                           
             For "create_linkedin_from_position":
             {{"paper_position": "int or null"}}
             
             For "list_papers_by_date":
-            {{"date": "YYYY-MM-DD or null", "date_description": "what the user said about date"}}
+            {{"year": "YYYY", "month": "MM", "day": "DD", "date_description": "what the user said about date"}}
 
             Respond with ONLY the JSON object, nothing else."""),
             HumanMessage(content=f"""Conversation History:
@@ -246,22 +242,63 @@ Current User Input: {user_input}""")
     
     async def _create_linkedin_post_by_position_node(self, state: AgentState) -> AgentState:
         logger.info("Entered _create_linkedin_post_by_position_node")
-        logger.info(state)
         position = int(state.get("parameters", {}).get("paper_position"))
         paper_id = state.get("current_papers", [])[position-1]
         try:
-            linkedin_post_content = await self.linkedin_service.create_post_for_paper_by_position(paper_id)
-            return {**state, "messages": [AIMessage(content=linkedin_post_content)]}
+            linkedin_post_content, linkedin_post_id = await self.linkedin_service.create_post_for_paper_by_position(paper_id)
+            return {**state, "messages": [AIMessage(content=linkedin_post_content)], "current_post": linkedin_post_id, "current_post_text": linkedin_post_content}
         except Exception as e:
             return {**state, "error": f"Error creating post: {str(e)}"}
         
+    async def _modify_linkedin_post_node(self, state: AgentState) -> AgentState:
+        logger.info("Entered _modify_linkedin_post_node")
+        post = state.get("current_post_text")
+        if post is None:
+            return {**state, "error": "No post to modify"}
+        
+        logger.info(f"old post: {post}")
 
+        user_request = state.get("messages", [])[-1].content
+        linkedin_post_id = state.get("current_post")
 
-    # async def _create_linkedin_post_by_title_node(self, state: AgentState) -> AgentState:
-    #     pass
+        try:
+            linkedin_post_content = await self.linkedin_service.change_post(post, user_request, linkedin_post_id)
+            return {**state, "messages": [AIMessage(content=linkedin_post_content)]}
+        except Exception as e:
+            return {**state, "error": f"Error modifying post: {str(e)}"}
+        
 
     async def _list_papers_by_date_node(self, state: AgentState) -> AgentState:
-        pass
+        logger.info("Entered _list_papers_by_date_node")
+        try:
+            target_date = state.get("parameters", {}).get("target_date") or datetime.now().strftime("%Y-%m-%d")
+            processed_papers_ids, response_msg = await self._retrieve_papers_by_date(target_date)
+
+            return {**state, "messages": [AIMessage(content=response_msg)], "current_papers": processed_papers_ids}
+        except Exception as e:
+            return {**state, "error": f"Error summarizing papers: {str(e)}"}
+
+    async def _retrieve_papers_by_date(self, target_date) -> AgentState:
+        logger.info("Entered _retrieve_papers_by_date")
+        papers = await self.database_service.get_papers_by_date(target_date)
+        processed_papers_ids = []
+        processed_papers_title = []
+
+        for paper in papers:
+            processed_papers_ids.append(paper['id'])
+            processed_papers_title.append(paper['title'])
+
+        response_msg = f"\n\nAvailable papers for the date {target_date}:"
+        if processed_papers_title:
+            for i in enumerate(processed_papers_title):
+                response_msg += f"\n{i+1}. {processed_papers_title[i]}"
+
+        return processed_papers_ids, response_msg
+
+        
+
+
+
 
     async def _general_chat_node(self, state: AgentState) -> AgentState:
         """Generate general chat response"""
@@ -317,7 +354,23 @@ Could you clarify what you'd like me to do?"""
         """Process user input through the conversational workflow"""
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
-            "current_papers": [1, 2, 3]
+            "current_papers": [1, 2, 3],
+            "current_post": 1,
+            "current_post_text": """🚀 Advancing Multimodal Reasoning Models with Variance-Aware Sampling
+
+Large multimodal reasoning models are progressing rapidly, but two key challenges remain:
+1️⃣ Lack of open, large-scale, high-quality long chain-of-thought (CoT) data.
+2️⃣ Instability of reinforcement learning (RL) algorithms in post-training, especially with GRPO where low reward variance weakens optimization signals.
+
+Our latest work addresses these gaps with three major contributions:
+
+✨ Variance-Aware Sampling (VAS) – a new data selection strategy guided by the Variance Promotion Score (VPS). By combining outcome variance and trajectory diversity, VAS increases reward variance and stabilizes policy optimization.
+
+✨ Open, high-quality datasets – we release ~1.6M long CoT cold-start examples and ~15k RL QA pairs, curated to maximize quality, difficulty, and diversity.
+
+✨ Open-source multimodal reasoning models – spanning multiple scales, with a reproducible end-to-end training codebase and standardized baselines for the community.
+
+📊 Our experiments on mathematical reasoning benchmarks show that both the curated data and VAS significantly improve performance. We also provide theoretical insights, proving that reward variance lower-bounds expected policy gradient magnitude—with VAS as a practical mechanism to achieve this.""",
         }
         config = {"configurable": {
             "thread_id": int(session_id)

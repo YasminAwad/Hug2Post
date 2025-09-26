@@ -71,17 +71,6 @@ class DatabaseService:
                 )
             """)
             
-            # Create conversations table for memory
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS conversations (
-                    id SERIAL PRIMARY KEY,
-                    session_id TEXT NOT NULL,
-                    user_input TEXT NOT NULL,
-                    assistant_response TEXT NOT NULL,
-                    intent TEXT,
-                    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-            """)
 
     async def drop_tables(self):
         """Drop database tables if they exist"""
@@ -183,10 +172,20 @@ class DatabaseService:
     async def save_linkedin_post(self, linkedin_post: LinkedInPost):
         """Save a LinkedIn post"""
         async with self.pool.acquire() as conn:
-            await conn.execute("""
+            result = await conn.execute("""
                 INSERT INTO linkedin_posts (title, post)
                 VALUES ($1, $2)
             """, linkedin_post.title, linkedin_post.post)
+
+            return result['id']
     
+    async def change_linkedin_post(self, id:int, new_post:str):
+        """Change a LinkedIn post"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE linkedin_posts
+                SET post = $1
+                WHERE id = $2
+            """, new_post, id)
     
     
