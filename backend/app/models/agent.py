@@ -10,5 +10,5 @@ class AgentState(TypedDict):
     current_papers: Optional[List[int]]
     intent: Optional[str]
     parameters: Optional[Dict[str, Any]]
-    target_date: Optional[str]
+    # target_date: Optional[str]
     error: Optional[str]
