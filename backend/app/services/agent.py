@@ -90,7 +90,7 @@ class ChatBotAgent:
             {
                 "summarize": "download_papers",
                 "linkedin by position": "create_linkedin_post_from_position",
-                "list by date": "list_papers_by_date",
+                "list": "list_papers_by_date",
                 "error": "__end__"
             }
         )
@@ -233,8 +233,6 @@ Current User Input: {user_input}""")
         response = await self.llm_service.generate_response(prompt.format_messages())
 
         try:
-            logger.info("extract_parameters")
-            logger.info(response)
             return json.loads(response.content.strip())
         except json.JSONDecodeError:
             return {}
@@ -272,11 +270,13 @@ Current User Input: {user_input}""")
         logger.info("Entered _list_papers_by_date_node")
         try:
             target_date = state.get("parameters", {}).get("target_date") or datetime.now().strftime("%Y-%m-%d")
+            logger.info(f"target_date: {target_date}")
             processed_papers_ids, response_msg = await self._retrieve_papers_by_date(target_date)
+            print("processed_papers_ids:", processed_papers_ids)
 
             return {**state, "messages": [AIMessage(content=response_msg)], "current_papers": processed_papers_ids}
         except Exception as e:
-            return {**state, "error": f"Error summarizing papers: {str(e)}"}
+            return {**state, "error": f"Error listing papers: {str(e)}"}
 
     async def _retrieve_papers_by_date(self, target_date) -> AgentState:
         logger.info("Entered _retrieve_papers_by_date")
@@ -285,13 +285,12 @@ Current User Input: {user_input}""")
         processed_papers_title = []
 
         for paper in papers:
-            processed_papers_ids.append(paper['id'])
-            processed_papers_title.append(paper['title'])
-
+            processed_papers_ids.append(paper.id)
+            processed_papers_title.append(paper.title)
         response_msg = f"\n\nAvailable papers for the date {target_date}:"
         if processed_papers_title:
-            for i in enumerate(processed_papers_title):
-                response_msg += f"\n{i+1}. {processed_papers_title[i]}"
+            for idx, title in enumerate(processed_papers_title, start=1):
+                response_msg += f"\n{idx}. {title}"
 
         return processed_papers_ids, response_msg
 
