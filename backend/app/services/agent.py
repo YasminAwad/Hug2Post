@@ -41,8 +41,8 @@ class ChatBotAgent:
     async def initialize(self):
         """Initialize database connections"""
         await self.database_service.connect()
-        await self.database_service.drop_tables()
-        await self.database_service.create_tables()
+        # await self.database_service.drop_tables()
+        # await self.database_service.create_tables()
         print("Database connected and initialized")
     
     async def cleanup(self):
@@ -63,7 +63,7 @@ class ChatBotAgent:
         graph.add_node("summarize_papers", self._summarize_papers_node)
         graph.add_node("download_papers", self._download_papers_node)
         graph.add_node("create_linkedin_post_from_position", self._create_linkedin_post_by_position_node)
-        graph.add_node("create_linkedin_post_from_title", self._create_linkedin_post_by_title_node)
+        # graph.add_node("create_linkedin_post_from_title", self._create_linkedin_post_by_title_node)
         graph.add_node("list_papers_by_date", self._list_papers_by_date_node)
         graph.add_node("general_chat", self._general_chat_node)
         graph.add_node("clarify_request", self._clarify_request_node)
@@ -76,7 +76,7 @@ class ChatBotAgent:
             {
                 "summarize": "parameter_extractor",
                 "linkedin by position": "parameter_extractor",
-                "linkedin by title": "parameter_extractor",
+                # "linkedin by title": "parameter_extractor",
                 "list by date": "parameter_extractor",
                 "general": "general_chat",
                 "clarify": "clarify_request",
@@ -90,7 +90,7 @@ class ChatBotAgent:
             {
                 "summarize": "download_papers",
                 "linkedin by position": "create_linkedin_post_from_position",
-                "linkedin by title": "create_linkedin_post_from_title",
+                # "linkedin by title": "create_linkedin_post_from_title",
                 "list by date": "list_papers_by_date",
                 "error": "__end__"
             }
@@ -98,7 +98,7 @@ class ChatBotAgent:
 
         graph.add_edge("download_papers", "summarize_papers")
         graph.add_edge("summarize_papers", "__end__")
-        graph.add_edge("create_linkedin_post_from_title", "__end__")
+        # graph.add_edge("create_linkedin_post_from_title", "__end__")
         graph.add_edge("create_linkedin_post_from_position", "__end__")
         graph.add_edge("list_papers_by_date", "__end__")
         graph.add_edge("general_chat", "__end__")
@@ -113,8 +113,8 @@ class ChatBotAgent:
             return "error"
         elif intent == "summarize_papers":
             return "summarize"
-        elif intent == "create_linkedin_from_title":
-            return "linkedin by title"
+        # elif intent == "create_linkedin_from_title":
+        #     return "linkedin by title"
         elif intent == "create_linkedin_from_position":
             return "linkedin by position"
         elif intent == "list_papers_by_date":
@@ -133,8 +133,8 @@ class ChatBotAgent:
             return "error"
         elif intent == "summarize_papers":
             return "summarize"
-        elif intent == "create_linkedin_from_title":
-            return "linkedin by title"
+        # elif intent == "create_linkedin_from_title":
+        #     return "linkedin by title"
         elif intent == "create_linkedin_from_position":
             return "linkedin by position"
         elif intent == "list_papers_by_date":
@@ -177,6 +177,9 @@ class ChatBotAgent:
 
         try:
             parameters = await self._extract_parameters(state)
+        except Exception as e:
+            return {**state, "error": f"Error extracting parameters: {str(e)}"} 
+        if state.get("intent") == "summarize_papers" or state.get("intent") == "list_papers_by_date":
             if not parameters.get("year"):
                 parameters["year"] = datetime.now().year
             if not parameters.get("month") or int(parameters.get("month")) > 12 or int(parameters.get("month")) < 1 or not parameters.get("day") or int(parameters.get("day")) > 31 or int(parameters.get("day")) < 1:
@@ -184,11 +187,10 @@ class ChatBotAgent:
             
             target_date = f"{parameters['year']}-{parameters['month']}-{parameters['day']}" or datetime.now().strftime("%Y-%m-%d")
             parameters["target_date"] = target_date
+
+        logger.info(f"Parameters: {parameters}")
             
-            return {**state, "parameters": parameters}
-        
-        except Exception as e:
-            return {**state, "error": f"Error extracting parameters: {str(e)}"} 
+        return {**state, "parameters": parameters}
         
     async def _extract_parameters(self, state: AgentState) -> Dict[str, Any]:
         logger.info("Entered _extract_parameters")
@@ -243,16 +245,22 @@ Current User Input: {user_input}""")
     
     
     async def _create_linkedin_post_by_position_node(self, state: AgentState) -> AgentState:
-
+        logger.info("Entered _create_linkedin_post_by_position_node")
+        logger.info(state)
+        position = int(state.get("parameters", {}).get("paper_position"))
+        paper_id = state.get("current_papers", [])[position-1]
+        try:
+            linkedin_post_content = await self.linkedin_service.create_post_for_paper_by_position(paper_id)
+            return {**state, "messages": [AIMessage(content=linkedin_post_content)]}
+        except Exception as e:
+            return {**state, "error": f"Error creating post: {str(e)}"}
         
-        pass
-        
 
 
-    async def _create_linkedin_post_by_title_node(self: AgentState) -> AgentState:
-        pass
+    # async def _create_linkedin_post_by_title_node(self, state: AgentState) -> AgentState:
+    #     pass
 
-    async def _list_papers_by_date_node(self: AgentState) -> AgentState:
+    async def _list_papers_by_date_node(self, state: AgentState) -> AgentState:
         pass
 
     async def _general_chat_node(self, state: AgentState) -> AgentState:
@@ -309,6 +317,7 @@ Could you clarify what you'd like me to do?"""
         """Process user input through the conversational workflow"""
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
+            "current_papers": [1, 2, 3]
         }
         config = {"configurable": {
             "thread_id": int(session_id)
