@@ -120,23 +120,23 @@ class DatabaseService:
             
             return result['id']
         
-# async def save_paper(self, paper: Paper):
-#         """Save a paper to the database"""
-#         async with self.pool.acquire() as conn:
-#             row = await conn.execute("""
-#                 INSERT INTO papers (title, abstract, key_findings, methodology, significance, paper_path, summary_path, timestamp)
-#                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-#                 ON CONFLICT (title) DO UPDATE SET
-#                     abstract = $2,
-#                     key_findings = $3,
-#                     methodology = $4,
-#                     significance = $5,
-#                     paper_path = $6, 
-#                     summary_path = $7,
-#                     timestamp = $8
-#             """, paper.title, paper.abstract, json.dumps(paper.key_findings), 
-#                 paper.methodology, paper.significance, paper.paper_path, paper.summary_path, paper.timestamp)
-#             return row["id"]
+    async def get_paper_by_id(self, paper_id: int) -> Optional[Paper]:
+        """Get a paper by its ID"""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM papers WHERE id = $1", paper_id)
+            if row:
+                return Paper(
+                    id=row['id'],
+                    title=row['title'],
+                    abstract=row['abstract'],
+                    key_findings=json.loads(row['key_findings']),
+                    methodology=row['methodology'],
+                    significance=row['significance'],
+                    paper_path=row['paper_path'],
+                    summary_path=row['summary_path'],
+                    timestamp=row['timestamp']
+                )
+            return None
     
     async def get_paper_by_title(self, title: str) -> Optional[Paper]:
         """Get a paper by title"""
