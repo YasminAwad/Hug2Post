@@ -294,10 +294,6 @@ Current User Input: {user_input}""")
 
         return processed_papers_ids, response_msg
 
-        
-
-
-
 
     async def _general_chat_node(self, state: AgentState) -> AgentState:
         """Generate general chat response"""
@@ -347,32 +343,15 @@ Could you clarify what you'd like me to do?"""
         
         return {**state, "messages": [AIMessage(content=response_msg)]}
 
-
-
     async def process_user_input(self, user_input: str, session_id: str) -> str:
         """Process user input through the conversational workflow"""
+        thread_id = session_id_to_int(session_id)
+
         initial_state = {
-            "messages": [HumanMessage(content=user_input)],
-            "current_papers": [1, 2, 3],
-            "current_post": 1,
-            "current_post_text": """🚀 Advancing Multimodal Reasoning Models with Variance-Aware Sampling
-
-Large multimodal reasoning models are progressing rapidly, but two key challenges remain:
-1️⃣ Lack of open, large-scale, high-quality long chain-of-thought (CoT) data.
-2️⃣ Instability of reinforcement learning (RL) algorithms in post-training, especially with GRPO where low reward variance weakens optimization signals.
-
-Our latest work addresses these gaps with three major contributions:
-
-✨ Variance-Aware Sampling (VAS) – a new data selection strategy guided by the Variance Promotion Score (VPS). By combining outcome variance and trajectory diversity, VAS increases reward variance and stabilizes policy optimization.
-
-✨ Open, high-quality datasets – we release ~1.6M long CoT cold-start examples and ~15k RL QA pairs, curated to maximize quality, difficulty, and diversity.
-
-✨ Open-source multimodal reasoning models – spanning multiple scales, with a reproducible end-to-end training codebase and standardized baselines for the community.
-
-📊 Our experiments on mathematical reasoning benchmarks show that both the curated data and VAS significantly improve performance. We also provide theoretical insights, proving that reward variance lower-bounds expected policy gradient magnitude—with VAS as a practical mechanism to achieve this.""",
+            "messages": [HumanMessage(content=user_input)]
         }
         config = {"configurable": {
-            "thread_id": int(session_id)
+            "thread_id": int(thread_id)
         }}
         
         final_state = await self.graph.ainvoke(
@@ -388,6 +367,15 @@ Our latest work addresses these gaps with three major contributions:
         
         return response_text
 
+def session_id_to_int(session_id: str) -> int:
+    """Convert session ID string to integer for thread_id"""
+    try:
+        # If it's already a number, return it as int
+        return int(session_id)
+    except ValueError:
+        # If it's a UUID or other string, convert to hash
+        return abs(hash(session_id)) % (10**8)
+    
 import asyncio
 
 async def main():
@@ -409,4 +397,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    #asyncio.run(main())
+    pass
