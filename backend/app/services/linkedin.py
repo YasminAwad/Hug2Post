@@ -21,6 +21,7 @@ class LinkedInService:
         paper_id: int,
     ) -> str:
         """Create LinkedIn post for a paper by position using database"""
+        logger.info("Entered LinkedInService.create_post_for_paper_by_position")
         
         # Get paper from database by position
         paper = await self.database_service.get_paper_by_id(paper_id)

@@ -7,7 +7,7 @@ import uuid
 from typing import Dict
 import logging
 
-from app.services.agent import ChatBotAgent
+from agent import ChatBotAgent
 
 # Import your existing agent class
 # from your_agent_module import ChatBotAgent

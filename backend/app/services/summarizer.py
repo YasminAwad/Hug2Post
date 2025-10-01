@@ -22,6 +22,8 @@ class SummaryService:
     
     async def summarize_papers_for_date(self, target_date: str) -> Tuple[List[Dict[str, Any]], str]:
         """Summarize all papers for a given date"""
+        logger.info("Entered SummaryService.summarize_papers_for_date")
+        
         date_folder = target_date.replace("-", "")
         papers_folder = self.base_papers_dir / date_folder
         summaries_folder = self.base_summaries_dir / date_folder
@@ -62,7 +64,7 @@ class SummaryService:
         if processed_count > 0:
             response_msg += "\n\nSummaries created:"
             for i, summary in enumerate(summaries):
-                response_msg += f"\n{i+1}. {summary['title']}"
+                response_msg += f"\n{str(i+1)}. {summary['title']}"
                 # response_msg += f"\n   {summary['abstract'][:100]}...\n"
         
         return processed_summary_ids, response_msg

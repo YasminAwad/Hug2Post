@@ -5,17 +5,18 @@ from langgraph.checkpoint.memory import MemorySaver
 from typing import Dict, List, Any, Tuple
 import json
 
-from backend.app.services.summary_service import SummaryService
-from backend.app.services.linkedin_service import LinkedInService
-from backend.app.services.paper_listing_service import PaperListingService
-from datetime import datetime
+from app.services.summarizer import SummaryService
+from app.services.linkedin import LinkedInService
+from app.services.listing import PaperListingService
 from app.services.database import DatabaseService
+from app.services.downloader import DownloaderService
+from app.services.intent_classifier import IntentClassifierService
 from app.models.agent import AgentState
-from backend.app.services.downloader_service import DownloaderService
-from backend.app.services.intent_classifier_service import IntentClassifierService
+from datetime import datetime
 from app.config.logging import logger
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
+from app.services.parameter_extractor import ParameterExtractorService
 
 class ChatBotAgent:
     """Main agent orchestrating all services with database integration"""
@@ -28,6 +29,7 @@ class ChatBotAgent:
         # Initialize other services
         self.llm_service = LLMService()
         self.intent_classifier = IntentClassifierService(self.llm_service)
+        self.parameter_extractor_service = ParameterExtractorService(self.llm_service)
         self.downloader_service = DownloaderService()
         self.summary_service = SummaryService(self.llm_service, self.database_service)
         self.linkedin_service = LinkedInService(self.llm_service, self.database_service)
@@ -53,6 +55,25 @@ class ChatBotAgent:
         """Create necessary directories"""
         Path("papers").mkdir(exist_ok=True)
         Path("summaries").mkdir(exist_ok=True)
+
+    def _get_history_and_user_input(self, state: AgentState):
+
+        role_map = {
+            SystemMessage: "System",
+            HumanMessage: "Human",
+            AIMessage: "Assistant",
+        }
+
+        messages = state.get("messages", [])[:-1]
+
+        history = "\n".join(
+            f"{role_map.get(type(msg), 'Unknown')}: {msg.content}"
+            for msg in messages
+        )
+
+        user_input = state.get("messages", [])[-1].content if state.get("messages") else ""
+
+        return history, user_input
 
     def _create_graph(self) -> StateGraph:
         """Create the LangGraph workflow"""
@@ -132,8 +153,6 @@ class ChatBotAgent:
             return "error"
         elif intent == "summarize_papers":
             return "summarize"
-        # elif intent == "create_linkedin_from_title":
-        #     return "linkedin by title"
         elif intent == "create_linkedin_from_position":
             return "linkedin by position"
         elif intent == "list_papers_by_date":
@@ -143,8 +162,12 @@ class ChatBotAgent:
         
     async def _intent_classifier_node(self, state: AgentState) -> AgentState:
         """Classify user intent"""
+        logger.info("Entered _intent_classifier_node")
+
+        history, user_input = self._get_history_and_user_input(state)
+
         try:
-            intent = await self.intent_classifier.classify_intent(self.llm_service, state)
+            intent = await self.intent_classifier.classify_intent(history, user_input)
             return {**state, "intent": intent}
         except Exception as e:
             return {**state, "error": f"Intent classification failed: {str(e)}"}
@@ -164,23 +187,34 @@ class ChatBotAgent:
         
     async def _summarize_papers_node(self, state: AgentState) -> AgentState:
         """Summarize papers and save to database"""
+        logger.info("Entered _summarize_papers_node")
         try:
             target_date = state.get("parameters", {}).get("target_date") or datetime.now().strftime("%Y-%m-%d")
             processed_summary_ids, response_msg = await self.summary_service.summarize_papers_for_date(target_date)
 
-            return {**state, "messages": [AIMessage(content=response_msg)], "current_papers": processed_summary_ids} # una lista degli ID dei papers correnti. Cosi' poi dall'id se l'utente ti chiede paper numero 1, tu scegli il primo della lista, cerchi nel db, ottieni la posizione del summary e crei il post.
+            return {**state, "messages": [AIMessage(content=response_msg)], "current_papers": processed_summary_ids} 
+        
         except Exception as e:
             return {**state, "error": f"Error summarizing papers: {str(e)}"}
         
     async def _parameter_extractor_node(self, state: AgentState) -> AgentState:
+        """Extract parameters from user input"""
+        logger.info("Entered _parameter_extractor_node")
+
+        history, user_input = self._get_history_and_user_input(state)
+        intent = state.get("intent")
 
         try:
-            parameters = await self._extract_parameters(state)
+            parameters = await self.parameter_extractor_service.extract_parameters(history, user_input, intent)
+
         except Exception as e:
             return {**state, "error": f"Error extracting parameters: {str(e)}"} 
-        if state.get("intent") == "summarize_papers" or state.get("intent") == "list_papers_by_date":
+        
+        if intent == "summarize_papers" or intent == "list_papers_by_date":
+            
             if not parameters.get("year"):
-                parameters["year"] = datetime.now().year
+                parameters["year"] = str(datetime.now().year)
+
             if not parameters.get("month") or int(parameters.get("month")) > 12 or int(parameters.get("month")) < 1 or not parameters.get("day") or int(parameters.get("day")) > 31 or int(parameters.get("day")) < 1:
                 return {**state, "error": "Invalid date format. Please specify a year, a month, and a day.", "messages": [AIMessage(content="The date you've sent is invalid. Please specify a year, a month, and a day.")]}
             
@@ -190,53 +224,6 @@ class ChatBotAgent:
         logger.info(f"Parameters: {parameters}")
             
         return {**state, "parameters": parameters}
-        
-    async def _extract_parameters(self, state: AgentState) -> Dict[str, Any]:
-        logger.info("Entered _extract_parameters")
-        role_map = {
-            SystemMessage: "System",
-            HumanMessage: "Human",
-            AIMessage: "Assistant",
-        }
-
-        messages = state.get("messages", [])[:-1]  # exclude last message
-
-        history = "\n".join(
-            f"{role_map.get(type(msg), 'Unknown')}: {msg.content}"
-            for msg in messages
-        )
-
-        intent = state["intent"]
-        user_input = state.get("messages", [])[-1].content if state.get("messages") else ""
-
-        """Extract parameters from user input based on intent"""
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content=f"""You are a parameter extractor. The user's intent is: {intent}
-            Extract relevant parameters and respond with a JSON object, do not add any additional text and don't write "json" in the response:
-
-            For "summarize_papers":
-            {{"year": "YYYY", "month": "MM", "day": "DD", "date_description": "what the user said about date"}}
-                          
-            For "create_linkedin_from_position":
-            {{"paper_position": "int or null"}}
-            
-            For "list_papers_by_date":
-            {{"year": "YYYY", "month": "MM", "day": "DD", "date_description": "what the user said about date"}}
-
-            Respond with ONLY the JSON object, nothing else."""),
-            HumanMessage(content=f"""Conversation History:
-{history}
-
-Current User Input: {user_input}""")
-        ])
-        
-        response = await self.llm_service.generate_response(prompt.format_messages())
-
-        try:
-            return json.loads(response.content.strip())
-        except json.JSONDecodeError:
-            return {}
-    
     
     async def _create_linkedin_post_by_position_node(self, state: AgentState) -> AgentState:
         logger.info("Entered _create_linkedin_post_by_position_node")
@@ -265,35 +252,22 @@ Current User Input: {user_input}""")
         except Exception as e:
             return {**state, "error": f"Error modifying post: {str(e)}"}
         
-
     async def _list_papers_by_date_node(self, state: AgentState) -> AgentState:
+        """Entered _list_papers_by_date_node"""
         logger.info("Entered _list_papers_by_date_node")
+
+        target_date = state.get("parameters", {}).get("target_date") or datetime.now().strftime("%Y-%m-%d")
+
+        logger.info(f"target_date: {target_date}")
+
         try:
-            target_date = state.get("parameters", {}).get("target_date") or datetime.now().strftime("%Y-%m-%d")
-            logger.info(f"target_date: {target_date}")
-            processed_papers_ids, response_msg = await self._retrieve_papers_by_date(target_date)
-            print("processed_papers_ids:", processed_papers_ids)
+            processed_papers_ids, response_msg = await self.listing_service.retrieve_papers_by_date(target_date)
+
+            logger.info("processed_papers_ids:", processed_papers_ids)
 
             return {**state, "messages": [AIMessage(content=response_msg)], "current_papers": processed_papers_ids}
         except Exception as e:
             return {**state, "error": f"Error listing papers: {str(e)}"}
-
-    async def _retrieve_papers_by_date(self, target_date) -> AgentState:
-        logger.info("Entered _retrieve_papers_by_date")
-        papers = await self.database_service.get_papers_by_date(target_date)
-        processed_papers_ids = []
-        processed_papers_title = []
-
-        for paper in papers:
-            processed_papers_ids.append(paper.id)
-            processed_papers_title.append(paper.title)
-        response_msg = f"\n\nAvailable papers for the date {target_date}:"
-        if processed_papers_title:
-            for idx, title in enumerate(processed_papers_title, start=1):
-                response_msg += f"\n{idx}. {title}"
-
-        return processed_papers_ids, response_msg
-
 
     async def _general_chat_node(self, state: AgentState) -> AgentState:
         """Generate general chat response"""
