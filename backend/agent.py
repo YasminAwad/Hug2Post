@@ -5,14 +5,14 @@ from langgraph.checkpoint.memory import MemorySaver
 from typing import Dict, List, Any, Tuple
 import json
 
-from app.services.nodes.summary_service import SummaryService
-from app.services.nodes.linkedin_service import LinkedInService
-from app.services.nodes.paper_listing_service import PaperListingService
+from backend.app.services.summary_service import SummaryService
+from backend.app.services.linkedin_service import LinkedInService
+from backend.app.services.paper_listing_service import PaperListingService
 from datetime import datetime
 from app.services.database import DatabaseService
 from app.models.agent import AgentState
-from app.services.nodes.downloader_service import DownloaderService
-from app.services.nodes.intent_classifier_service import IntentClassifierService
+from backend.app.services.downloader_service import DownloaderService
+from backend.app.services.intent_classifier_service import IntentClassifierService
 from app.config.logging import logger
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
