@@ -2,13 +2,14 @@
 import Header from "@/components/Header";
 import InputBar from "@/components/InputBar";
 import MessageArea from "@/components/MessageArea";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 interface Message {
   id: number;
   content: string;
   isUser: boolean;
   type: "user" | "assistant";
+  isStreaming?: boolean;
 }
 
 const Home = () => {
@@ -23,6 +24,7 @@ const Home = () => {
   const [currentMessage, setCurrentMessage] = useState("");
   const [sessionId, setSessionId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
+  const streamingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Generate session ID on component mount
   useEffect(() => {
@@ -30,9 +32,70 @@ const Home = () => {
     setSessionId(newSessionId);
   }, []);
 
+  // Cleanup streaming timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (streamingTimeoutRef.current) {
+        clearTimeout(streamingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const simulateStreaming = (fullText: string, messageId: number) => {
+    // Split text into chunks (by words for smoother streaming)
+    const words = fullText.split(' ');
+    let currentIndex = 0;
+    
+    // Add initial empty message and IMMEDIATELY stop the loading indicator
+    setMessages((prev) => [
+      ...prev,
+      { 
+        id: messageId, 
+        content: "", 
+        isUser: false, 
+        type: "assistant",
+        isStreaming: true
+      },
+    ]);
+    
+    // Stop loading immediately when streaming starts
+    setIsLoading(false);
+
+    const streamNextChunk = () => {
+      if (currentIndex < words.length) {
+        const chunkSize = Math.floor(Math.random() * 3) + 1; // 1-3 words per chunk
+        const chunk = words.slice(currentIndex, currentIndex + chunkSize).join(' ');
+        currentIndex += chunkSize;
+
+        setMessages((prev) => {
+          const updated = [...prev];
+          const lastMessage = updated[updated.length - 1];
+          if (lastMessage.id === messageId) {
+            lastMessage.content = words.slice(0, currentIndex).join(' ');
+            if (currentIndex >= words.length) {
+              lastMessage.isStreaming = false;
+            }
+          }
+          return updated;
+        });
+
+        // Random delay between 30-80ms for natural feel
+        const delay = Math.random() * 50 + 30;
+        streamingTimeoutRef.current = setTimeout(streamNextChunk, delay);
+      }
+    };
+
+    streamNextChunk();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentMessage.trim() || isLoading) return;
+
+    // Clear any existing streaming timeout
+    if (streamingTimeoutRef.current) {
+      clearTimeout(streamingTimeoutRef.current);
+    }
 
     // Add user message
     const userMessageId = messages.length + 1;
@@ -70,16 +133,9 @@ const Home = () => {
         setSessionId(data.session_id);
       }
 
-      // Add AI message
-      setMessages((prev) => [
-        ...prev,
-        { 
-          id: userMessageId + 1, 
-          content: aiContent, 
-          isUser: false, 
-          type: "assistant" 
-        },
-      ]);
+      // Start streaming simulation
+      simulateStreaming(aiContent, userMessageId + 1);
+      
     } catch (error) {
       console.error("Chat error:", error);
       setMessages((prev) => [
@@ -91,12 +147,16 @@ const Home = () => {
           type: "assistant" 
         },
       ]);
-    } finally {
       setIsLoading(false);
     }
   };
 
   const clearChat = () => {
+    // Clear any existing streaming timeout
+    if (streamingTimeoutRef.current) {
+      clearTimeout(streamingTimeoutRef.current);
+    }
+    
     setMessages([
       {
         id: 1,
@@ -108,6 +168,7 @@ const Home = () => {
     // Generate new session ID
     const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     setSessionId(newSessionId);
+    setIsLoading(false);
   };
 
   return (

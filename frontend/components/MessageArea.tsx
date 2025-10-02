@@ -7,6 +7,7 @@ interface Message {
   content: string;
   isUser: boolean;
   type: "user" | "assistant";
+  isStreaming?: boolean;
 }
 
 interface Props {
@@ -28,6 +29,12 @@ const LoadingIndicator = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+const StreamingCursor = () => {
+  return (
+    <span className="inline-block w-2 h-4 bg-gray-600 ml-1 animate-pulse"></span>
   );
 };
 
@@ -77,10 +84,11 @@ const MessageArea: React.FC<Props> = ({ messages, isLoading }) => {
             >
               {msg.content}
             </ReactMarkdown>
+            {msg.isStreaming && <StreamingCursor />}
           </div>
         </div>
       ))}
-      {isLoading && <LoadingIndicator />}
+      {isLoading && messages[messages.length - 1]?.isStreaming !== true && <LoadingIndicator />}
       <div ref={messagesEndRef} />
     </div>
   );
