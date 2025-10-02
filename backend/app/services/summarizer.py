@@ -7,9 +7,10 @@ from typing import Dict, List, Any, Tuple
 from app.services.llm import LLMService
 from app.services.database import DatabaseService, Paper
 from app.config.logging import logger
-from app.utils.pdf_utils import extract_text
+from app.utils.utils import extract_text
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
+from app.utils.utils import retrieve_prompt
 
 class SummaryService:
     """Service for creating paper summaries"""
@@ -60,12 +61,13 @@ class SummaryService:
                 print(f"Error processing {pdf_file.name}: {str(e)}")
                 continue
         
-        response_msg = f"Successfully summarized {processed_count} papers for {target_date}!"
+        response_msg = f"✅ Successfully summarized **{processed_count}** papers for *{target_date}*!"
+
         if processed_count > 0:
-            response_msg += "\n\nSummaries created:"
-            for i, summary in enumerate(summaries):
-                response_msg += f"\n{str(i+1)}. {summary['title']}"
-                # response_msg += f"\n   {summary['abstract'][:100]}...\n"
+            response_msg += "\n\n**Summaries created:**\n"
+            response_msg += "\n".join(
+                [f"{i+1}. {summary['title']}" for i, summary in enumerate(summaries)]
+        )
         
         return processed_summary_ids, response_msg
     
@@ -78,12 +80,9 @@ class SummaryService:
         target_date: str
     ) -> Paper:
         """Create paper summary, save markdown file, and save metadata to database"""
-        
         logger.info("Entered _create_paper_summary_and_save_to_db")
-        # Create structured metadata
+
         metadata_dict = await self._create_paper_metadata(text_content, paper_title)
-        
-        # Create detailed summary
         detailed_summary = await self._create_detailed_summary(
             text_content, metadata_dict['title']
         )
@@ -114,24 +113,16 @@ class SummaryService:
         paper_id = await self.database_service.save_paper(paper_model)
         paper_model.id = paper_id
         logger.info(f"Saved paper model: {paper_model}")
-        #logger.info(f"Saved paper metadata to database: {paper_model.title}")
         
         return paper_model
     
     async def _create_paper_metadata(self, text_content: str, paper_title: str) -> Dict[str, Any]:
         """Create structured metadata from paper content"""
         logger.info("Entered _create_paper_metadata")
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""Create structured metadata with the following fields. 
-            Respond ONLY with a valid JSON object, without writing json at the start:
 
-            {
-                "title": "Extracted or inferred title, or None if not available",
-                "abstract": "A brief 2-3 sentence summary, or None if not available",
-                "key_findings": ["Finding 1", "Finding 2", "Finding 3",] or None if not available,
-                "methodology": "Brief description of the approach, or None if not available",
-                "significance": "Why this work matters, or None if not available"
-            }"""),
+        system_prompt_content = retrieve_prompt("create_paper_metadata.txt")
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessage(content=system_prompt_content),
             HumanMessage(content=f"Content:\n{text_content[:3000]}")
         ])
         
@@ -152,18 +143,10 @@ class SummaryService:
         
     async def _create_detailed_summary(self, text_content: str, title: str) -> str:
         """Create detailed summary from paper content"""
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""Write a comprehensive summary covering:
-            1. Introduction and Background
-            2. Problem Statement and Motivation  
-            3. Proposed Method/Approach
-            4. Experimental Setup and Data
-            5. Results and Analysis
-            6. Discussion and Implications
-            7. Limitations and Future Work
-            8. Conclusions
 
-            Use markdown formatting with proper headers."""),
+        system_prompt_content = retrieve_prompt("create_detailed_summary.txt")
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessage(content=system_prompt_content),
             HumanMessage(content=f"Paper: {title}\n\nContent:\n{text_content[:4000]}")
         ])
         

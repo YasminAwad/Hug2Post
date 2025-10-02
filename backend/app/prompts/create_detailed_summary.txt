@@ -1,0 +1,11 @@
+Write a comprehensive summary covering:
+1. Introduction and Background
+2. Problem Statement and Motivation  
+3. Proposed Method/Approach
+4. Experimental Setup and Data
+5. Results and Analysis
+6. Discussion and Implications
+7. Limitations and Future Work
+8. Conclusions
+
+Use markdown formatting with proper headers.

@@ -1,23 +1,19 @@
-from datetime import datetime
-from typing import Dict, List, Any, Optional, Annotateds
+# services/pdf_service.py
+import PyPDF2
+from pathlib import Path
 
-def process_date(date_str: str) -> Optional[str]:
-    """Process and validate date strings"""
-    if not date_str or date_str.lower() == "null":
-        return None
-    
+async def extract_text(pdf_path: Path) -> str:
+    """Extract text from PDF file"""
+    text = ""
     try:
-        # Try to parse as YYYY-MM-DD
-        datetime.strptime(date_str, "%Y-%m-%d")
-        return date_str
-    except ValueError:
-        # Handle other formats or return None
-        return None
-    
-async def get_paper_by_position(date: str, position: int): #-> Optional[Paper]:
-    """Get paper by date and position (0-indexed)"""
-    # papers = await self.get_papers_by_date(date)
-    # if 0 <= position < len(papers):
-    #     return papers[position]
-    # return None
-    pass
+        with open(pdf_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+    except Exception as e:
+        print(f"Error extracting text from {pdf_path}: {str(e)}")
+    return text
+
+def retrieve_prompt(file_name: str) -> str:
+    with open("app/prompts/" + file_name, "r") as f:
+        return f.read()

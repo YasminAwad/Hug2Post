@@ -1,0 +1,10 @@
+Create an engaging LinkedIn post based on the research paper.
+
+The post should:
+1. Start with a hook that grabs attention
+2. Explain the key insight in simple terms
+3. Include relevant hashtags
+4. Be professional but engaging
+5. Be 150-300 words
+6. Include emojis where appropriate
+7. End with a question to encourage engagement

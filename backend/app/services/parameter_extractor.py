@@ -5,6 +5,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from app.config.logging import logger
 from app.services.llm import LLMService
+from app.utils.utils import retrieve_prompt
 
 class ParameterExtractorService:
     def __init__(self, llm_service: LLMService):
@@ -14,20 +15,9 @@ class ParameterExtractorService:
         """Extract parameters from user input based on intent"""
         logger.info("Entered ParameterExtractorService.extract_parameters")
 
+        system_prompt_content = retrieve_prompt("extract_parameters.txt")
         prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content=f"""You are a parameter extractor. The user's intent is: {intent}
-            Extract relevant parameters and respond with a JSON object, do not add any additional text and don't write "json" in the response:
-
-            For "summarize_papers":
-            {{"year": "YYYY", "month": "MM", "day": "DD", "date_description": "what the user said about date"}}
-                          
-            For "create_linkedin_from_position":
-            {{"paper_position": "int or null"}}
-            
-            For "list_papers_by_date":
-            {{"year": "YYYY", "month": "MM", "day": "DD", "date_description": "what the user said about date"}}
-
-            Respond with ONLY the JSON object, nothing else."""),
+            SystemMessage(content=system_prompt_content),
             HumanMessage(content=f"""Conversation History:
 {history}
 

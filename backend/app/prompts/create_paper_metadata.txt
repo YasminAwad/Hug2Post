@@ -1,0 +1,10 @@
+Create structured metadata with the following fields. 
+Respond ONLY with a valid JSON object, without writing json at the start:
+
+{
+    "title": "Extracted or inferred title, or None if not available",
+    "abstract": "A brief 2-3 sentence summary, or None if not available",
+    "key_findings": ["Finding 1", "Finding 2", "Finding 3",] or None if not available,
+    "methodology": "Brief description of the approach, or None if not available",
+    "significance": "Why this work matters, or None if not available"
+}

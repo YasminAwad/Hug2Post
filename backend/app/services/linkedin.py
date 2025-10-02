@@ -7,6 +7,7 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from app.services.llm import LLMService
 from app.services.database import DatabaseService, LinkedInPost
 from app.config.logging import logger
+from app.utils.utils import retrieve_prompt
 
 
 class LinkedInService:
@@ -23,10 +24,7 @@ class LinkedInService:
         """Create LinkedIn post for a paper by position using database"""
         logger.info("Entered LinkedInService.create_post_for_paper_by_position")
         
-        # Get paper from database by position
-        paper = await self.database_service.get_paper_by_id(paper_id)
-        print(paper)
-        
+        paper = await self.database_service.get_paper_by_id(paper_id)        
         if not paper:
             raise ValueError(f"No paper found id: {paper_id}")
         
@@ -37,11 +35,9 @@ class LinkedInService:
         
         async with aiofiles.open(summary_path, 'r', encoding='utf-8') as f:
             detailed_summary = await f.read()
-        
-        # Generate LinkedIn post
+
         linkedin_post_content = await self._generate_linkedin_post(detailed_summary)
         
-        # Save LinkedIn post to database
         linkedin_post = LinkedInPost(
             title=paper.title,
             post=linkedin_post_content
@@ -55,23 +51,17 @@ class LinkedInService:
     async def change_post(self, post: str, user_request: str, linkedin_post_id: int): 
         """Generate a new LinkedIn post based on the existing one and user request"""
         logger.info("Entered change_post")
+
         new_post_content = await self._modify_linkedin_post(post, user_request)
         await self.database_service.change_linkedin_post(linkedin_post_id, new_post_content)
         return new_post_content
     
     async def _generate_linkedin_post(self, detailed_summary: str) -> str:
         """Generate LinkedIn post from detailed summary"""
+
+        system_prompt_content = retrieve_prompt("generate_linkedin_post.txt")
         prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""Create an engaging LinkedIn post based on the research paper.
-            
-            The post should:
-            1. Start with a hook that grabs attention
-            2. Explain the key insight in simple terms
-            3. Include relevant hashtags
-            4. Be professional but engaging
-            5. Be 150-300 words
-            6. Include emojis where appropriate
-            7. End with a question to encourage engagement"""),
+            SystemMessage(content=system_prompt_content),
             HumanMessage(content=f"Detailed Summary:\n{detailed_summary[:1000]}...")
         ])
         
@@ -81,8 +71,10 @@ class LinkedInService:
     async def _modify_linkedin_post(self, post: str, user_request: str): 
         logger.info("Entered _modify_linkedin_post")
         """Generate a new LinkedIn post based on the existing one and user request"""
+
+        system_prompt_content = retrieve_prompt("modify_linkedin_post.txt")
         prompt = ChatPromptTemplate.from_messages([
-            SystemMessage(content="""You are a helpful research paper assistant that make changes to existing LinkedIn posts. Change the generated post based on the user request. Return only the post without any other text."""),
+            SystemMessage(content=system_prompt_content),
             AIMessage(content=post),
             HumanMessage(content=user_request)
         ])
