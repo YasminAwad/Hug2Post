@@ -22,6 +22,7 @@ const Home = () => {
   ]);
   const [currentMessage, setCurrentMessage] = useState("");
   const [sessionId, setSessionId] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(false);
 
   // Generate session ID on component mount
   useEffect(() => {
@@ -31,7 +32,7 @@ const Home = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentMessage.trim()) return;
+    if (!currentMessage.trim() || isLoading) return;
 
     // Add user message
     const userMessageId = messages.length + 1;
@@ -42,6 +43,7 @@ const Home = () => {
 
     const userInput = currentMessage;
     setCurrentMessage("");
+    setIsLoading(true);
 
     try {
       // Send request to FastAPI
@@ -89,6 +91,8 @@ const Home = () => {
           type: "assistant" 
         },
       ]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -110,11 +114,12 @@ const Home = () => {
     <div className="flex justify-center bg-gray-100 min-h-screen py-8 px-4">
       <div className="w-full max-w-6xl bg-white flex flex-col rounded-xl shadow-lg border border-gray-100 overflow-hidden h-[90vh]">
         <Header />
-        <MessageArea messages={messages} />
+        <MessageArea messages={messages} isLoading={isLoading} />
         <InputBar
           currentMessage={currentMessage}
           setCurrentMessage={setCurrentMessage}
           onSubmit={handleSubmit}
+          isLoading={isLoading}
         />
       </div>
     </div>
@@ -122,4 +127,3 @@ const Home = () => {
 };
 
 export default Home;
-

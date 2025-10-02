@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -11,9 +11,33 @@ interface Message {
 
 interface Props {
   messages: Message[];
+  isLoading: boolean;
 }
 
-const MessageArea: React.FC<Props> = ({ messages }) => {
+const LoadingIndicator = () => {
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[70%] p-3 rounded-lg bg-gray-200">
+        <div className="flex items-center space-x-2">
+          <div className="flex space-x-1">
+            <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
+          <span className="text-gray-600 text-sm">Generating response...</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MessageArea: React.FC<Props> = ({ messages, isLoading }) => {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isLoading]);
+
   return (
     <div className="flex-1 p-4 overflow-y-auto space-y-4">
       {messages.map((msg) => (
@@ -56,6 +80,8 @@ const MessageArea: React.FC<Props> = ({ messages }) => {
           </div>
         </div>
       ))}
+      {isLoading && <LoadingIndicator />}
+      <div ref={messagesEndRef} />
     </div>
   );
 };
