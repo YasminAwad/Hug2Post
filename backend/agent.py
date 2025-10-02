@@ -228,7 +228,7 @@ class ChatBotAgent:
     async def _create_linkedin_post_by_position_node(self, state: AgentState) -> AgentState:
         logger.info("Entered _create_linkedin_post_by_position_node")
         position = int(state.get("parameters", {}).get("paper_position"))
-        paper_id = state.get("current_papers", [])[position-1]
+        paper_id = int(state.get("current_papers", [])[position-1])
         try:
             linkedin_post_content, linkedin_post_id = await self.linkedin_service.create_post_for_paper_by_position(paper_id)
             return {**state, "messages": [AIMessage(content=linkedin_post_content)], "current_post": linkedin_post_id, "current_post_text": linkedin_post_content}
@@ -240,8 +240,6 @@ class ChatBotAgent:
         post = state.get("current_post_text")
         if post is None:
             return {**state, "error": "No post to modify"}
-        
-        logger.info(f"old post: {post}")
 
         user_request = state.get("messages", [])[-1].content
         linkedin_post_id = state.get("current_post")

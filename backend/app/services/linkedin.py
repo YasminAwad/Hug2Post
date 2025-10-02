@@ -44,9 +44,8 @@ class LinkedInService:
         )
         
         linkedin_post_id = await self.database_service.save_linkedin_post(linkedin_post)
-        print(f"Saved LinkedIn post to database for paper: {paper.title}")
         
-        return linkedin_post_content, linkedin_post_id
+        return linkedin_post_content, int(linkedin_post_id)
     
     async def change_post(self, post: str, user_request: str, linkedin_post_id: int): 
         """Generate a new LinkedIn post based on the existing one and user request"""

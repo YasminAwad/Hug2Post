@@ -7,7 +7,6 @@ from pydantic import BaseModel
 
 DATABASE_URL = "postgresql://paperuser:yasmin@localhost/paperhelper"  # Configure this
 
-
 # Database Models
 class Paper(BaseModel):
     id: Optional[int] = None
@@ -172,12 +171,13 @@ class DatabaseService:
     async def save_linkedin_post(self, linkedin_post: LinkedInPost):
         """Save a LinkedIn post"""
         async with self.pool.acquire() as conn:
-            result = await conn.execute("""
+            result = await conn.fetchrow("""
                 INSERT INTO linkedin_posts (title, post)
                 VALUES ($1, $2)
+                RETURNING id
             """, linkedin_post.title, linkedin_post.post)
-
             return result['id']
+
     
     async def change_linkedin_post(self, id:int, new_post:str):
         """Change a LinkedIn post"""
